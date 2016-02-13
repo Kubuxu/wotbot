@@ -1,6 +1,8 @@
 var ROOT = "fc7f:3d04:419f:e9b0:526f:fc6a:576:cba0";
 var TRAIN_UNTIL = 1453844364189;
 var RESERVE_K = 0.3;
+var TOP_FRAC = 0.1;
+var TOP_MAX = 0.3;
 
 var dedupe = function (trusts) {
     var trustPairs = { };
@@ -115,12 +117,37 @@ var runRootless = function (state0, trusts) {
             var kd = karmaByAddr[t.dest]|0;
             var tfrac = t.trust / totalTrustByAddr[t.src];
             if (tfrac > 1) { throw new Error(); }
-            nextKarmaByAddr[t.dest] = (nextKarmaByAddr[t.dest] || kd) +
-                ((ks - (ks * RESERVE_K)) * tfrac);
+            nextKarmaByAddr[t.dest] = nextKarmaByAddr[t.dest] || kd;
+            var trans = (ks - (ks * RESERVE_K)) * tfrac;
+            if (trans > 0) { nextKarmaByAddr[t.dest] += trans; }
         });
         var totalKarma = 0;
         var totalDiff = 0;
-        for (addr in nextKarmaByAddr) { totalKarma += nextKarmaByAddr[addr]; }
+        var karmasArray = [];
+        for (addr in nextKarmaByAddr) {
+            karmasArray.push(nextKarmaByAddr[addr]);
+        }
+        karmasArray.sort(function (a, b) { return b - a; });
+        var topKarama = 0;
+        for (var i = 0; i < karmasArray.length * TOP_FRAC; i++) {
+            topKarama += karmasArray[i];
+        }
+        for (addr in nextKarmaByAddr) {
+            totalKarma += nextKarmaByAddr[addr];
+        }
+        // TOP_MAX karma holding adjustment
+        var adjust = TOP_MAX / (topKarama / totalKarma);
+        //console.log(topKarama, totalKarma, topKarama / totalKarma, adjust)
+        if (adjust < 1) {
+            for (addr in nextKarmaByAddr) {
+                nextKarmaByAddr[addr] = Math.pow(nextKarmaByAddr[addr], adjust);
+            }
+        }
+        // recalculate totalKarma after adjusment
+        totalKarma = 0;
+        for (addr in nextKarmaByAddr) {
+            totalKarma += nextKarmaByAddr[addr];
+        }
         var multiplier = 1000/totalKarma;
         totalKarma = 0;
         for (addr in nextKarmaByAddr) {
